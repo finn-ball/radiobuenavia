@@ -1,0 +1,8 @@
+[auth]
+app_key=""
+app_secret=""
+refresh_token=""
+
+[paths]
+preprocess="/automation/preprocessed"
+postprocess="/automation/postprocessed"
