@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 class PipeClient:
     def __init__(self):
@@ -6,17 +7,14 @@ class PipeClient:
         #     self.__to_name = '\\\\.\\pipe\\ToSrvPipe'
         #     self.__from_name = '\\\\.\\pipe\\FromSrvPipe'
         # else:
-        root = os.path.abspath(os.sep)
         self.__to_name = os.path.join(
-            root,
-            "tmp",
+            tempfile.gettempdir(),
             "audacity_script_pipe.to.{}".format(str(os.getuid()))
         )
         if not os.path.exists(self.__to_name):
             raise FileNotFoundError(self.__to_name)
         self.__from_name = os.path.join(
-            root,
-            "tmp",
+            tempfile.gettempdir(),
             "audacity_script_pipe.from.{}".format(str(os.getuid()))
         )
         if not os.path.exists(self.__from_name):
