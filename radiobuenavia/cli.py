@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 
 import dropbox
 import toml
@@ -21,10 +22,14 @@ def cli():
     try:
         run(app_key, app_secret, refresh_token, preprocess, postprocess)
     except dropbox.exceptions.AuthError as e:
+        logging.error("Are the credentials correct?")
         logging.error(e)
         return -1
 
 def run(app_key, app_secret, refresh_token, preprocess, postprocess):
+    tmp_dir = os.path.join(tempfile.gettempdir(), "rbv")
+    if not os.path.isdir(tmp_dir):
+        os.mkdir(tmp_dir)
     dbx = DropBoxClient(
         app_key,
         app_secret,
@@ -51,29 +56,30 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess):
 
     for f in preproc:
         name = dbx.rename_file(f)
-        local_path = "/tmp/{}".format(name)
-        logging.info("Downloading %s to %s", f.name, local_path)
-        dbx.download_file(local_path, f.path_lower)
-
         # Audacity struggles to import files with spaces so we rename it
-        rename_import = "/tmp/im-{}".format(name.replace(" ", "-"))
-        rename_export = "/tmp/ex-{}".format(name.replace(" ", "-"))
-        os.rename(local_path, rename_import)
+        audacity_import = os.path.join(
+            tmp_dir,
+            "im-{}".format(name.replace(" ", "-"))
+        )
+        audacity_export = os.path.join(
+            tmp_dir,
+            "ex-{}".format(name.replace(" ", "-"))
+        )
+        logging.info("Downloading %s to %s", f.name, audacity_import)
+        dbx.download_file(audacity_import, f.path_lower)
 
         logging.info("Processing...")
         try:
-            audacity.process(rename_import, rename_export)
+            audacity.process(audacity_import, audacity_export)
         except RuntimeError as e:
             logging.error("Failed to execute command.")
             logging.error(e)
             return -1
         logging.info("Done!")
 
-        os.rename(rename_export, local_path)
-
         try:
             logging.info("Attempting to upload \"%s\"", name)
-            dbx.upload_file(local_path, name)
+            dbx.upload_file(audacity_export, name)
         except dropbox.exceptions.ApiError as e:
             if isinstance(e.error, dropbox.files.UploadError):
                 logging.error("Couldn't upload \"%s\", does the file already exist?", name)
