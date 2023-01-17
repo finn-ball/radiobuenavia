@@ -18,7 +18,7 @@ setup(
     version='1.0',
 
     # Description of your Package
-    description='Check if your number is odd or even',
+    description='automate the download, mixing and upload of tracks',
 
     # Website for your Project or Github repo
     url="https://github.com/finn-ball/radiobuenavia",
@@ -42,10 +42,4 @@ setup(
     long_description_content_type="text/markdown",
 
     entry_points={"console_scripts": ["rbv = radiobuenavia.cli:cli"]},
-
-    # Classifiers allow your Package to be categorized based on functionality
-    # classifiers = [
-    # "Programming Language :: Python :: 3",
-    # "Operating System :: OS Independent",
-    # ],
 )
