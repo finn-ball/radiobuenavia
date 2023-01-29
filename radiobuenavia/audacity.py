@@ -1,8 +1,8 @@
 import os
 import sys
 import tempfile
-
-import win32pipe, win32file
+if sys.platform == 'win32':
+    import win32pipe, win32file
 
 class PipeClient:
     def __init__(self):
@@ -34,6 +34,8 @@ class PipeClient:
                 tempfile.gettempdir(),
                 "audacity_script_pipe.from.{}".format(str(os.getuid()))
             )
+            self.__write_pipe=open(self.__write_pipe_path, 'w')
+            # self.__read_pipe=open(self.__read_pipe_path, 'rt')
         if not os.path.exists(self.__write_pipe_path):
             raise FileNotFoundError(self.__write_pipe_path)
         if not os.path.exists(self.__read_pipe_path):
@@ -53,11 +55,13 @@ class PipeClient:
 
     def get_response(self) -> str:
         """Return the command response."""
-        line = self.__read_pipe.readline()
-        result = line
-        while line != "\n" and len(result) > 0:
-            line = self.__read_pipe.readline()
-            result += line
+        result = ""
+        with open(self.__read_pipe_path, 'rt') as f:
+            line = f.readline()
+            result = line
+            while line != "\n" and len(result) > 0:
+                line = f.readline()
+                result += line
         return result
 
     def do_command(self, command) -> str:
@@ -71,11 +75,8 @@ class PipeClient:
 
     def process(self, import_path: str, export_path: str):
         """Process the file by importing, running filters and exporting."""
-        print("import")
         self._import(import_path)
-        print("select all")
         self._select_all()
-        print("compressor")
         self._compressor(
             threshold=-12,
             noise_floor=-40,
@@ -85,7 +86,6 @@ class PipeClient:
             normalize=True,
             use_peak=True
         )
-        print("limiter")
         self._limiter(
             type="SoftLimit",
             gain_l=0,
@@ -94,9 +94,7 @@ class PipeClient:
             hold=6.2,
             makeup="No",
         )
-        print("export")
         self._export(export_path)
-        print("close track")
         self._close_track()
 
     def _import(self, path):

@@ -1,3 +1,4 @@
+import logging
 import os
 
 import pydub
@@ -18,7 +19,9 @@ def get_artist(path: str) -> str:
 def _get_bitrate(path: str, sound: pydub.AudioSegment) -> str:
     """If the track is longer than 90 minutes, lower the bitrate."""
     original_bitrate = mediainfo(path)['bit_rate']
+    logging.info("Current bitrate: {}".format(original_bitrate))
     if sound.duration_seconds > 90 * 60:
+        logging.info("Bitrate changed to 210k.")
         return "210k"
     else:
         return original_bitrate

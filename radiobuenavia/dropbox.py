@@ -1,14 +1,17 @@
+import logging
 import os
 from typing import List
 
 import dropbox
-from dropbox.files import FileMetadata
+from dropbox.files import CommitInfo, FileMetadata, UploadSessionCursor
+
+CHUNK_SIZE = 4 * 1024 * 1024
 
 
 class DropBoxClient():
-    def __init__(self, app_key:str, app_secret: str, refresh_token: str, preprocess_path: str, postprocess_path: str):
+    def __init__(self, app_key: str, app_secret: str, refresh_token: str, preprocess_path: str, postprocess_path: str):
         self.__dbx = dropbox.Dropbox(
-            app_key = app_key,
+            app_key=app_key,
             app_secret=app_secret,
             oauth2_refresh_token=refresh_token
         )
@@ -22,7 +25,8 @@ class DropBoxClient():
         # TODO: check this mechanism
         while result.has_more:
             result = self.__dbx.files_list_folder_continue(result.cursor)
-            entries.extend([p for p in result.entries if isinstance(p, FileMetadata)])
+            entries.extend(
+                [p for p in result.entries if isinstance(p, FileMetadata)])
         return entries
 
     def rename_file(self, file: FileMetadata) -> str:
@@ -43,15 +47,39 @@ class DropBoxClient():
         """Downloads the file."""
         self.__dbx.files_download_to_file(local_path, download_path)
 
-    # TODO: Upload limit is 150Mb...
     def upload_file(self, local_path: str, name: str) -> None:
-        """Uploads files smaller than 150Mb."""
+        """Uploads files using the session method."""
         remote_path = "{}/{}".format(self.__postprocess_path, name)
-        # We may need a way to upload larger files
-        if self.__file_size_check(local_path):
-            raise ValueError
+        file_size = os.path.getsize(local_path)
+        n_total = file_size / CHUNK_SIZE
+        n = 0
         with open(local_path, 'rb') as f:
-            self.__dbx.files_upload(f.read(), remote_path)
+            upload_session_start_result = self.__dbx.files_upload_session_start(
+                f.read(CHUNK_SIZE)
+            )
+            cursor = UploadSessionCursor(
+                session_id=upload_session_start_result.session_id,
+                offset=f.tell()
+            )
+            commit = CommitInfo(path=remote_path)
+            while f.tell() < file_size:
+                if ((file_size - f.tell()) <= CHUNK_SIZE):
+                    self.__dbx.files_upload_session_finish(
+                        f.read(CHUNK_SIZE),
+                        cursor,
+                        commit
+                    )
+                else:
+                    self.__dbx.files_upload_session_append_v2(
+                        f.read(CHUNK_SIZE),
+                        cursor,
+                    )
+                    cursor.offset = f.tell()
+                n+=1
+                logging.info("{} - {}%".format(
+                    remote_path,
+                    round((n/n_total)*100)
+                ))
 
     def list_files_to_process(self) -> List[FileMetadata]:
         """List all files that can be processed."""
@@ -61,7 +89,3 @@ class DropBoxClient():
             if not self.rename_file(f) in postproc:
                 preproc.append(f)
         return preproc
-
-    def __file_size_check(self, path) -> bool:
-        file_size = os.path.getsize(path)
-        return file_size >= 157286400
