@@ -33,7 +33,7 @@ setup(
     packages=find_packages(),
 
     # Dependencies/Other modules required for your package to work
-    install_requires=['dropbox', 'toml'],
+    install_requires=['dropbox', 'toml', "pywin32", "pydub"],
 
     # Detailed description of your package
     long_description=read("README.md"),
