@@ -29,3 +29,6 @@ curl --location --request POST 'https://api.dropboxapi.com/oauth2/token' \
 ```
 
 Paste the `App secret`, `App key` and the `refresh_token` in the response into the `config.toml`.
+
+# FFMPEG
+This tool uses pydub which has a dependency on ffmpeg. This is due to being unable to script bitrates and editing the metadata through audacity scripting.

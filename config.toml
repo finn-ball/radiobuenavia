@@ -6,3 +6,4 @@ refresh_token=""
 [paths]
 preprocess="/automation/preprocessed"
 postprocess="/automation/postprocessed"
+jingles=[]
