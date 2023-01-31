@@ -9,11 +9,14 @@ from . import tools
 from .audacity import PipeClient
 from .dropbox import DropBoxClient
 
+print("""This software is distributed under the GNU GENERAL PUBLIC LICENSE agreement.
+This software comes with absolutely no warranty or liability.
+More information can be found in the LICENSE file.""")
 
 def cli():
     logging.basicConfig(level=logging.INFO)
     print(__art)
-    logging.info("Starting up")
+    logging.info("Starting up...")
 
     data = toml.load("./config.toml")
     app_key = data["auth"]["app_key"]
@@ -32,8 +35,8 @@ def cli():
         logging.error("Are the credentials correct?")
         logging.error(e)
     except FileNotFoundError as e:
-        logging.error(e)
         logging.error("Potentially cannot find file: ")
+        logging.error(e)
     except Exception as e:
         logging.error(e.__class__)
         logging.error(e)
@@ -47,6 +50,7 @@ def cli():
         if err:
             print("")
             logging.error("Try restarting audacity and rerunning the script.")
+        print("\nRememeber to close audacity to free up memory.")
         print("\nDone (hit enter)")
         input()
 
@@ -65,7 +69,7 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity):
     preproc = dbx.list_files_to_process()
 
     if preproc == []:
-        logging.info("No new files to process!")
+        logging.info("\n\n\tNo new files to process!")
         return
 
     print("\nFiles to process ({}):\n".format(len(preproc)))

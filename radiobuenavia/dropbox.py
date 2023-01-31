@@ -54,32 +54,35 @@ class DropBoxClient():
         n_total = file_size / CHUNK_SIZE
         n = 0
         with open(local_path, 'rb') as f:
-            upload_session_start_result = self.__dbx.files_upload_session_start(
-                f.read(CHUNK_SIZE)
-            )
-            cursor = UploadSessionCursor(
-                session_id=upload_session_start_result.session_id,
-                offset=f.tell()
-            )
-            commit = CommitInfo(path=remote_path)
-            while f.tell() < file_size:
-                if ((file_size - f.tell()) <= CHUNK_SIZE):
-                    self.__dbx.files_upload_session_finish(
-                        f.read(CHUNK_SIZE),
-                        cursor,
-                        commit
-                    )
-                else:
-                    self.__dbx.files_upload_session_append_v2(
-                        f.read(CHUNK_SIZE),
-                        cursor,
-                    )
-                    cursor.offset = f.tell()
-                n+=1
-                logging.info("{} - {}%".format(
-                    remote_path,
-                    round((n/n_total)*100)
-                ))
+            if file_size <= CHUNK_SIZE:
+                self.__dbx.files_upload(f.read(), remote_path)
+            else:
+                upload_session_start_result = self.__dbx.files_upload_session_start(
+                    f.read(CHUNK_SIZE)
+                )
+                cursor = UploadSessionCursor(
+                    session_id=upload_session_start_result.session_id,
+                    offset=f.tell()
+                )
+                commit = CommitInfo(path=remote_path)
+                while f.tell() < file_size:
+                    if ((file_size - f.tell()) <= CHUNK_SIZE):
+                        self.__dbx.files_upload_session_finish(
+                            f.read(CHUNK_SIZE),
+                            cursor,
+                            commit
+                        )
+                    else:
+                        self.__dbx.files_upload_session_append_v2(
+                            f.read(CHUNK_SIZE),
+                            cursor,
+                        )
+                        cursor.offset = f.tell()
+                    n+=1
+                    logging.info("{} - {}%".format(
+                        remote_path,
+                        round((n/n_total)*100)
+                    ))
 
     def list_files_to_process(self) -> List[FileMetadata]:
         """List all files that can be processed."""
