@@ -26,7 +26,8 @@ class PipeClient:
                 None
             )
             self.__write_pipe=open(self.__write_pipe_path, 'w')
-            # self.__read_pipe=open(self.__read_pipe_path, 'rt')
+            win32pipe.SetNamedPipeHandleState(
+                handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
         else:
             self.__write_pipe_path = os.path.join(
                 tempfile.gettempdir(),
@@ -37,11 +38,8 @@ class PipeClient:
                 "audacity_script_pipe.from.{}".format(str(os.getuid()))
             )
             self.__write_pipe=open(self.__write_pipe_path, 'w')
-            self.__read_pipe=open(self.__read_pipe_path, 'rt')
         if not os.path.exists(self.__write_pipe_path):
             raise FileNotFoundError(self.__write_pipe_path)
-        # if not os.path.exists(self.__read_pipe_path):
-        #     raise FileNotFoundError(self.__read_pipe_path)
         self.__write_pipe.flush()
 
     def close(self):
@@ -55,33 +53,30 @@ class PipeClient:
         self.__write_pipe.write(command + os.linesep)
         self.__write_pipe.flush()
 
-    def get_win_response(self):
-        handle = self.__read_pipe_id
-        win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
-        result = ""
-        line = str(win32file.ReadFile(handle, 64*1024)[1])
-        while "BatchCommand finished" not in line:
-            line = str(win32file.ReadFile(handle, 64*1024)[1])
-            result += line
-        return result
-
     def get_response(self) -> str:
-        """Return the command response."""
-        result = ""
-        with open(self.__read_pipe_path, 'rt') as f:
-            line = f.readline()
-            result = line
-            while line != "\n" and len(result) > 0:
-                line = f.readline()
+        if sys.platform == 'win32':
+            handle = self.__read_pipe_id
+            result = ""
+            line = str(win32file.ReadFile(handle, 64*1024)[1])
+            while "BatchCommand finished" not in line:
+                line = str(win32file.ReadFile(handle, 64*1024)[1])
                 result += line
-        return result
+            return result
+        else:
+            result = ""
+            with open(self.__read_pipe_path, 'rt') as f:
+                line = f.readline()
+                result = line
+                while line != "\n" and len(result) > 0:
+                    line = f.readline()
+                    result += line
+            return result
 
     def do_command(self, command) -> str:
         """Send one command, and return the response."""
         print(command)
         self.send_command(command)
-        # response = self.get_response()
-        response = self.get_win_response()
+        response = self.get_response()
         if "BatchCommand finished: Failed!" in response:
             msg = "{}\n{}".format(command, response)
             raise RuntimeError(msg)
@@ -139,7 +134,7 @@ class PipeClient:
         ))
 
     def _export(self, path):
-        self.do_command("Export2: Filename={}".format(path))
+        self.do_command("Export2: Filename={} NumChannels=2".format(path))
 
     def _close_track(self):
         self.do_command("TrackClose:")

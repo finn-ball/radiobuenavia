@@ -18,18 +18,36 @@ def cli():
     print(__art)
     logging.info("Starting up...")
 
-    data = toml.load("./config.toml")
-    app_key = data["auth"]["app_key"]
-    app_secret = data["auth"]["app_secret"]
-    refresh_token = data["auth"]["refresh_token"]
-    preprocess = data["paths"]["preprocess"]
-    postprocess = data["paths"]["postprocess"]
+    try:
+        data = toml.load("./config.toml")
+        app_key = data["auth"]["app_key"]
+        app_secret = data["auth"]["app_secret"]
+        refresh_token = data["auth"]["refresh_token"]
+        preprocess = data["paths"]["preprocess"]
+        postprocess = data["paths"]["postprocess"]
+        jingles = data["paths"]["jingles"]
+    except Exception as e:
+        logging.error(e)
+        logging.error("Hit enter to leave.")
+        input()
+        return
+
+    if jingles != []:
+        logging.info("Found jingles: {}".format(jingles))
+
+    for j in jingles:
+        if not os.path.exists(j):
+            logging.error("Could not find jingle: {}".format(j))
+            logging.error("Hit enter to leave.")
+            input()
+            return
+
     err = True
     audacity = None
     try:
         audacity = PipeClient()
         run(app_key, app_secret, refresh_token,
-            preprocess, postprocess, audacity)
+            preprocess, postprocess, audacity, jingles)
         err = False
     except dropbox.exceptions.AuthError as e:
         logging.error("Are the credentials correct?")
@@ -55,7 +73,7 @@ def cli():
         input()
 
 
-def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity):
+def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, jingles):
     tmp_dir = os.path.join(tempfile.gettempdir(), "rbv")
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
@@ -106,10 +124,10 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity):
 
         artist = tools.get_artist(name)
         logging.info("Setting artist name and potentially changing bitrate.")
-        tools.process_metadata_and_bitrate(audacity_export, artist)
+        tools.process_metadata_and_bitrate(audacity_export, artist, jingles)
 
         try:
-            logging.info("Uploading...{}".format(name))
+            logging.info("Uploading... {}".format(name))
             dbx.upload_file(audacity_export, name)
         except dropbox.exceptions.ApiError as e:
             if isinstance(e.error, dropbox.files.UploadError):
