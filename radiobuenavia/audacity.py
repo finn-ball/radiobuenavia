@@ -27,7 +27,7 @@ class PipeClient:
             )
             self.__write_pipe=open(self.__write_pipe_path, 'w')
             win32pipe.SetNamedPipeHandleState(
-                handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
+                self.__read_pipe_id, win32pipe.PIPE_READMODE_MESSAGE, None, None)
         else:
             self.__write_pipe_path = os.path.join(
                 tempfile.gettempdir(),
