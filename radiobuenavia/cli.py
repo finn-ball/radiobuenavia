@@ -106,8 +106,6 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, j
     for f in preproc:
         print("{} -> {}".format(f.name, dbx.rename_file(f)))
 
-    return
-
     choice = input("\nProceed? (Y/n)")
     if not (choice == "Y" or choice == "y"):
         logging.info("Goodbye!")

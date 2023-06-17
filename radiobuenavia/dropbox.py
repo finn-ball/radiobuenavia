@@ -23,13 +23,10 @@ class DropBoxClient():
         """List all files in the directory."""
         result = self.__dbx.files_list_folder(path)
         entries = [p for p in result.entries if isinstance(p, FileMetadata)]
-        # TODO: check this mechanism
         while result.has_more:
             result = self.__dbx.files_list_folder_continue(result.cursor)
             entries.extend(
                 [p for p in result.entries if isinstance(p, FileMetadata)])
-        result = self.__dbx.files_get_metadata("/automation/preprocessed/Casual Worker-1.mp3", include_media_info=True)
-        print(result)
         return entries
 
     def rename_file(self, file: FileMetadata) -> str:
