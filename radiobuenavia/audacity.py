@@ -82,10 +82,21 @@ class PipeClient:
             raise RuntimeError(msg)
         return response
 
-    def process(self, import_path: str, export_path: str):
+    def process(self, import_path: str, export_path: str, live: bool):
         """Process the file by importing, running filters and exporting."""
         self._import(import_path)
         self._select_all()
+        self._process_live() if live else self._process_prerecord()
+        self._export(export_path)
+        self._close_track()
+
+    def _import(self, path):
+        self.do_command("Import2: Filename={}".format(path))
+
+    def _select_all(self):
+        self.do_command("SelectAll: ")
+
+    def _process_prerecord(self):
         self._compressor(
             threshold=-12,
             noise_floor=-40,
@@ -103,14 +114,14 @@ class PipeClient:
             hold=6.2,
             makeup="No",
         )
-        self._export(export_path)
-        self._close_track()
 
-    def _import(self, path):
-        self.do_command("Import2: Filename={}".format(path))
-
-    def _select_all(self):
-        self.do_command("SelectAll: ")
+    def _process_live(self):
+        self._normalizer(
+            peak_level=-0.3,
+            apply_gain=True,
+            remove_dc_offset=True,
+            stereo_independent=False,
+        )
 
     def _compressor(self, threshold: int, noise_floor: int, ratio: int, attack_time: int, release_time: int, normalize: bool, use_peak: bool):
         self.do_command("Compressor: Threshold={} NoiseFloor={} Ratio={} AttackTime={} ReleaseTime={} Normalize={} UsePeak={}".format(
@@ -131,6 +142,14 @@ class PipeClient:
             thresh,
             hold,
             makeup
+        ))
+
+    def _normalizer(self, peak_level: int, apply_gain: bool, remove_dc_offset: bool, stereo_independent: bool):
+        self.do_command("Normalize: PeakLevel={} ApplyGain={} RemoveDcOffset={} StereoIndepend={}".format(
+            peak_level,
+            apply_gain,
+            remove_dc_offset,
+            stereo_independent
         ))
 
     def _export(self, path):

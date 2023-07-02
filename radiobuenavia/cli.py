@@ -23,7 +23,8 @@ def cli():
         app_key = data["auth"]["app_key"]
         app_secret = data["auth"]["app_secret"]
         refresh_token = data["auth"]["refresh_token"]
-        preprocess = data["paths"]["preprocess"]
+        preprocess_live = data["paths"]["preprocess_live"]
+        preprocess_prerecord = data["paths"]["preprocess_prerecord"]
         postprocess = data["paths"]["postprocess"]
         jingles = data["paths"]["jingles"]
     except Exception as e:
@@ -47,7 +48,9 @@ def cli():
     try:
         audacity = PipeClient()
         run(app_key, app_secret, refresh_token,
-            preprocess, postprocess, audacity, jingles)
+            preprocess_live, postprocess, audacity, jingles, True)
+        run(app_key, app_secret, refresh_token,
+            preprocess_prerecord, postprocess, audacity, jingles, False)
         err = False
     except dropbox.exceptions.AuthError as e:
         logging.error("Are the credentials correct?")
@@ -73,7 +76,7 @@ def cli():
         input()
 
 
-def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, jingles):
+def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, jingles, live):
     tmp_dir = os.path.join(tempfile.gettempdir(), "rbv")
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
@@ -116,7 +119,7 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, j
 
         logging.info("Processing...")
         try:
-            audacity.process(audacity_import, audacity_export)
+            audacity.process(audacity_import, audacity_export, live)
         except RuntimeError as e:
             logging.error("Failed to execute command.")
             raise e
