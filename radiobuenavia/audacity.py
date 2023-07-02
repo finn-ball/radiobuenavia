@@ -82,10 +82,18 @@ class PipeClient:
             raise RuntimeError(msg)
         return response
 
-    def process(self, import_path: str, export_path: str):
+    def process(self, import_path: str, export_path: str, live: bool):
         """Process the file by importing, running filters and exporting."""
         self._import(import_path)
         self._select_all()
+        if live:
+            self._process_live()
+        else:
+            self._process_prerecord()
+        self._export(export_path)
+        self._close_track()
+
+    def _process_prerecord(self):
         self._compressor(
             threshold=-12,
             noise_floor=-40,
@@ -103,8 +111,9 @@ class PipeClient:
             hold=6.2,
             makeup="No",
         )
-        self._export(export_path)
-        self._close_track()
+
+    def _process_live(self):
+        self._normalize()
 
     def _import(self, path):
         self.do_command("Import2: Filename={}".format(path))
@@ -132,6 +141,10 @@ class PipeClient:
             hold,
             makeup
         ))
+
+    def _normalize(self):
+        # self.do_command("")
+        pass
 
     def _export(self, path):
         self.do_command("Export2: Filename={} NumChannels=2".format(path))
