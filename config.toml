@@ -4,6 +4,8 @@ app_secret=""
 refresh_token=""
 
 [paths]
-preprocess="/automation/preprocessed"
-postprocess="/automation/postprocessed"
+preprocess_live="/automation/preprocessed"
+preprocess_prerecord="/automation/preprocessed"
+postprocess_live="/automation/postprocessed"
+postprocess_prerecord="/automation/postprocessed"
 jingles=[]
