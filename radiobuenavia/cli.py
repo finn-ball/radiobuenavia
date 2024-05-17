@@ -25,7 +25,8 @@ def cli():
         refresh_token = data["auth"]["refresh_token"]
         preprocess_live = data["paths"]["preprocess_live"]
         preprocess_prerecord = data["paths"]["preprocess_prerecord"]
-        postprocess = data["paths"]["postprocess"]
+        postprocess_soundcloud = data["paths"]["postprocess_soundcloud"]
+        postprocess_archive = data["paths"]["postprocess_archive"]
         jingles = data["paths"]["jingles"]
     except Exception as e:
         logging.error(e)
@@ -48,9 +49,9 @@ def cli():
     try:
         audacity = PipeClient()
         run(app_key, app_secret, refresh_token,
-            preprocess_live, postprocess, audacity, jingles, True)
+            preprocess_live, postprocess_soundcloud, postprocess_archive, audacity, jingles, True)
         run(app_key, app_secret, refresh_token,
-            preprocess_prerecord, postprocess, audacity, jingles, False)
+            preprocess_prerecord, postprocess_soundcloud, postprocess_archive, audacity, jingles, False)
         err = False
     except dropbox.exceptions.AuthError as e:
         logging.error("Are the credentials correct?")
@@ -71,12 +72,12 @@ def cli():
         if err:
             print("")
             logging.error("Try restarting audacity and rerunning the script.")
-        print("\nRememeber to close audacity to free up memory.")
+        print("\nRemember to close audacity to free up memory.")
         print("\nDone (hit enter)")
         input()
 
 
-def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, jingles, live):
+def run(app_key, app_secret, refresh_token, preprocess, archive, soundcloud, audacity, jingles, live):
     tmp_dir = os.path.join(tempfile.gettempdir(), "rbv")
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
@@ -85,7 +86,8 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, j
         app_secret,
         refresh_token,
         preprocess,
-        postprocess,
+        archive,
+        soundcloud,
     )
     preproc = dbx.list_files_to_process()
 
@@ -131,7 +133,9 @@ def run(app_key, app_secret, refresh_token, preprocess, postprocess, audacity, j
 
         try:
             logging.info("Uploading... {}".format(name))
-            dbx.upload_file(audacity_export, name)
+            dbx.upload_file_soundcloud(audacity_export, name)
+            logging.info("Copying to archive... {}".format(name))
+            dbx.copy_to_archive(name)
         except dropbox.exceptions.ApiError as e:
             if isinstance(e.error, dropbox.files.UploadError):
                 logging.error(
