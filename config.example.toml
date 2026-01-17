@@ -1,0 +1,12 @@
+[auth]
+app_key = ""
+app_secret = ""
+refresh_token = ""
+
+[paths]
+preprocess_live = "/automation/preprocessed"
+preprocess_prerecord = "/automation/preprocessed"
+postprocess_soundcloud = "/automation/postprocessed"
+postprocess_archive = "/automation/archive"
+jingles = []
+jingles_dir = ""
