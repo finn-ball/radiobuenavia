@@ -1,34 +1,95 @@
 # radiobuenavia
-Automate audacity mixing and uploading to dropbox
 
-```
-pip install .
-rbv
-```
+CLI tool for Radio Buena Vida that automates:
+- listing new Dropbox audio uploads
+- running Audacity processing via scripting pipes
+- re-encoding metadata/bitrate and optional jingles
+- uploading to Dropbox post-process folders and archiving
 
-# Generating Refresh Tokens
+## Requirements
+- Audacity with scripting enabled
+- `ffmpeg` and `ffprobe` available in `PATH`
+- Dropbox app credentials with a refresh token
+  
+Enable the Audacity module `mod-script-pipe` in Preferences > Modules.
+On Windows, scripting pipes must be available at `\\\\.\\pipe\\ToSrvPipe` and `\\\\.\\pipe\\FromSrvPipe`.
 
-Go here and access your app:
-```
-https://www.dropbox.com/developers/apps
-```
+## Dependencies
 
-Copy the `App key` then paste into and execute the below URL:
-
-```
-https://www.dropbox.com/oauth2/authorize?client_id=$app_key&token_access_type=offline&response_type=code
-```
-
-Generate an `App secret` from the app developers menu and paste in that plus the `App key` and `generated_code` from the previous URL:
-```
-curl --location --request POST 'https://api.dropboxapi.com/oauth2/token' \
--u '$app_key:$app_secret' \
--H 'Content-Type: application/x-www-form-urlencoded' \
---data-urlencode 'code=$generated_code' \
---data-urlencode 'grant_type=authorization_code'
+```bash
+go mod tidy
 ```
 
-Paste the `App secret`, `App key` and the `refresh_token` in the response into the `config.toml`.
+## Build
 
-# FFMPEG
-This tool uses pydub which has a dependency on ffmpeg. This is due to being unable to script bitrates and editing the metadata through audacity scripting.
+```bash
+go build -o rbv ./cmd/rbv
+```
+
+## Build (static Windows)
+
+```powershell
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o rbv.exe ./cmd/rbv
+```
+
+## Build (static Linux)
+
+```bash
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o rbv ./cmd/rbv
+```
+
+## Install
+
+```bash
+go build -o rbv ./cmd/rbv
+install -m 755 rbv /usr/local/bin/rbv
+```
+
+```powershell
+go build -o rbv.exe ./cmd/rbv
+Copy-Item .\rbv.exe $env:USERPROFILE\bin\
+```
+
+## Run
+
+```bash
+./rbv -config ./config.toml
+```
+
+## Init
+
+Generate a config file interactively:
+
+```bash
+./rbv init -config ./config.toml
+```
+
+## Doctor
+
+Check Dropbox access and configured paths:
+
+```bash
+./rbv doctor -config ./config.toml
+```
+`rbv doctor` exits non-zero if `ffmpeg` or `ffprobe` are missing.
+
+## Config
+
+Create `config.toml` in the working directory (or point to it with `-config`).
+`jingles_dir` will be scanned for `.mp3` files and combined with any explicit `jingles` entries.
+Only `.mp3` files are processed.
+
+```toml
+[auth]
+app_key = ""
+app_secret = ""
+refresh_token = ""
+
+[paths]
+preprocess_live = "/automation/preprocessed/live"
+preprocess_prerecord = "/automation/preprocessed/prerecord"
+postprocess_soundcloud = "/automation/postprocessed"
+postprocess_archive = "/automation/archive"
+jingles = []
+jingles_dir = "/path/to/jingles"
+```

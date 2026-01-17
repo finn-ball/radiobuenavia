@@ -1,3 +1,8 @@
-__pycache__/
-radiobuenavia.egg-info/
 build/
+/rbv
+/rbv.exe
+config.toml
+*.log
+*.tmp
+*.swp
+.DS_Store
