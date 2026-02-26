@@ -37,10 +37,26 @@ jobs:
       - name: Verify no files changed
         run: git diff --exit-code
 
+  test:
+    name: Go Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
   build:
     name: Build Binaries (${{ matrix.goos }}, ${{ matrix.goarch }})
     runs-on: ubuntu-latest
-    needs: lint
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - lint
+      - test
       - build
     if: ${{ always() }}
     steps:
@@ -86,6 +103,10 @@ jobs:
           fi
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "Build matrix failed: ${{ needs.build.result }}"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Go tests failed: ${{ needs.test.result }}"
             exit 1
           fi
           echo "All CI checks passed."

@@ -70,7 +70,7 @@ func (c *Client) refreshAccessToken() error {
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("dropbox token request failed: %s", strings.TrimSpace(string(body)))
+		return newAPIError("/oauth2/token", resp, body)
 	}
 
 	var payload struct {
@@ -183,7 +183,7 @@ func (c *Client) DownloadFile(localPath, dropboxPath string) error {
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("dropbox download failed: %s", strings.TrimSpace(string(body)))
+		return newAPIError("/2/files/download", resp, body)
 	}
 	out, err := os.Create(localPath)
 	if err != nil {
@@ -254,7 +254,7 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 		}()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("dropbox upload failed: %s", strings.TrimSpace(string(body)))
+			return newAPIError("/2/files/upload", resp, body)
 		}
 		return nil
 	}
@@ -278,7 +278,7 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("dropbox upload session start failed: %s", strings.TrimSpace(string(body)))
+		return newAPIError("/2/files/upload_session/start", resp, body)
 	}
 	var startResp struct {
 		SessionID string `json:"session_id"`
@@ -326,7 +326,7 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 			}()
 			if finishResp.StatusCode != http.StatusOK {
 				body, _ := io.ReadAll(finishResp.Body)
-				return fmt.Errorf("dropbox upload session finish failed: %s", strings.TrimSpace(string(body)))
+				return newAPIError("/2/files/upload_session/finish", finishResp, body)
 			}
 			return nil
 		}
@@ -348,7 +348,7 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 		if appendResp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(appendResp.Body)
 			_ = appendResp.Body.Close()
-			return fmt.Errorf("dropbox upload session append failed: %s", strings.TrimSpace(string(body)))
+			return newAPIError("/2/files/upload_session/append_v2", appendResp, body)
 		}
 		if err := appendResp.Body.Close(); err != nil {
 			return err
@@ -399,7 +399,7 @@ func (c *Client) doAPIRequest(endpoint string, payload []byte) ([]byte, error) {
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("dropbox api error: %s", strings.TrimSpace(string(body)))
+		return nil, newAPIError(endpoint, resp, body)
 	}
 	return io.ReadAll(resp.Body)
 }
@@ -419,7 +419,7 @@ func (c *Client) doAPIRequestNoBody(endpoint string) ([]byte, error) {
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("dropbox api error: %s", strings.TrimSpace(string(body)))
+		return nil, newAPIError(endpoint, resp, body)
 	}
 	return io.ReadAll(resp.Body)
 }

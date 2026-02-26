@@ -2,8 +2,10 @@ package app
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,14 +304,50 @@ func promptConfirm(prompt string) bool {
 func retry(attempts int, delay time.Duration, fn func() error) error {
 	var err error
 	for i := 0; i < attempts; i++ {
-		if i > 0 {
-			log.Printf("Retrying after error (%d/%d)...", i+1, attempts)
-			time.Sleep(delay)
-		}
 		err = fn()
 		if err == nil {
 			return nil
 		}
+		if i == attempts-1 {
+			break
+		}
+		if !isRetryableError(err) {
+			return err
+		}
+		wait := retryDelay(err, delay, i)
+		log.Printf("Retrying after error (%d/%d): %v (next attempt in %s)", i+1, attempts, err, wait.Round(time.Millisecond))
+		time.Sleep(wait)
 	}
 	return err
+}
+
+func isRetryableError(err error) bool {
+	var apiErr *dropbox.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Retryable()
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+func retryDelay(err error, base time.Duration, attempt int) time.Duration {
+	var apiErr *dropbox.APIError
+	if errors.As(err, &apiErr) {
+		if wait, ok := apiErr.RetryDelay(); ok {
+			return wait
+		}
+	}
+	if base <= 0 {
+		base = time.Second
+	}
+	backoff := base * time.Duration(1<<attempt)
+	if backoff > 30*time.Second {
+		backoff = 30 * time.Second
+	}
+	jitterCap := base / 2
+	if jitterCap < 250*time.Millisecond {
+		jitterCap = 250 * time.Millisecond
+	}
+	jitter := time.Duration(time.Now().UnixNano() % int64(jitterCap))
+	return backoff + jitter
 }
