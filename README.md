@@ -25,7 +25,7 @@ go mod tidy
 Install `prek` and enable repository hooks:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/download/v0.4.2/prek-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/download/v0.3.4/prek-installer.sh | sh
 prek install
 ```
 
@@ -34,6 +34,24 @@ Run all hooks manually:
 ```bash
 prek run --all-files
 ```
+
+Install a specific version:
+
+```bash
+PREK_VERSION=v0.3.4
+curl --proto '=https' --tlsv1.2 -LsSf "https://github.com/j178/prek/releases/download/${PREK_VERSION}/prek-installer.sh" | sh
+```
+
+## CI
+
+GitHub Actions runs the same hooks on every push and pull request via [ci.yml](./.github/workflows/ci.yml):
+
+```bash
+prek run --all-files
+git diff --exit-code
+```
+
+CI fails if lint/format checks fail or if hooks would rewrite files.
 
 ## Build
 
@@ -71,6 +89,15 @@ Copy-Item .\rbv.exe $env:USERPROFILE\bin\
 ./rbv -config ./config.toml
 ```
 
+## Version
+
+```bash
+./rbv version
+./rbv --version
+```
+
+Release builds embed `version`, `commit`, build `date`, and `builtBy`.
+
 ## Init
 
 Generate a config file interactively:
@@ -87,6 +114,15 @@ Check Dropbox access and configured paths:
 ./rbv doctor -config ./config.toml
 ```
 `rbv doctor` exits non-zero if `ffmpeg` or `ffprobe` are missing.
+
+## Releases
+
+Tagged pushes (`v*`, for example `v1.2.3`) trigger [release.yml](./.github/workflows/release.yml), which:
+- builds `rbv` for Linux/macOS/Windows
+- embeds version metadata via `-ldflags`
+- publishes archives and `checksums.txt` to a GitHub Release
+
+Release runbook: [RELEASING.md](./RELEASING.md)
 
 ## Config
 
