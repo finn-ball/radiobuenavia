@@ -65,7 +65,9 @@ func (c *Client) refreshAccessToken() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("dropbox token request failed: %s", strings.TrimSpace(string(body)))
@@ -139,7 +141,8 @@ func extractFiles(entries []struct {
 	Name           string `json:"name"`
 	PathLower      string `json:"path_lower"`
 	ClientModified string `json:"client_modified"`
-}) []FileMetadata {
+},
+) []FileMetadata {
 	files := []FileMetadata{}
 	for _, entry := range entries {
 		if entry.Tag != "file" {
@@ -175,7 +178,9 @@ func (c *Client) DownloadFile(localPath, dropboxPath string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("dropbox download failed: %s", strings.TrimSpace(string(body)))
@@ -184,7 +189,9 @@ func (c *Client) DownloadFile(localPath, dropboxPath string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	_, err = io.Copy(out, resp.Body)
 	return err
 }
@@ -213,7 +220,9 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -240,7 +249,9 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			return fmt.Errorf("dropbox upload failed: %s", strings.TrimSpace(string(body)))
@@ -262,7 +273,9 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("dropbox upload session start failed: %s", strings.TrimSpace(string(body)))
@@ -308,7 +321,9 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 			if err != nil {
 				return err
 			}
-			defer finishResp.Body.Close()
+			defer func() {
+				_ = finishResp.Body.Close()
+			}()
 			if finishResp.StatusCode != http.StatusOK {
 				body, _ := io.ReadAll(finishResp.Body)
 				return fmt.Errorf("dropbox upload session finish failed: %s", strings.TrimSpace(string(body)))
@@ -330,10 +345,13 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 		if err != nil {
 			return err
 		}
-		appendResp.Body.Close()
 		if appendResp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(appendResp.Body)
+			_ = appendResp.Body.Close()
 			return fmt.Errorf("dropbox upload session append failed: %s", strings.TrimSpace(string(body)))
+		}
+		if err := appendResp.Body.Close(); err != nil {
+			return err
 		}
 
 		offset += int64(read)
@@ -376,7 +394,9 @@ func (c *Client) doAPIRequest(endpoint string, payload []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("dropbox api error: %s", strings.TrimSpace(string(body)))
@@ -394,7 +414,9 @@ func (c *Client) doAPIRequestNoBody(endpoint string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("dropbox api error: %s", strings.TrimSpace(string(body)))
