@@ -41,7 +41,7 @@ func NewClient(appKey, appSecret, refreshToken string) (*Client, error) {
 		appKey:       appKey,
 		appSecret:    appSecret,
 		refreshToken: refreshToken,
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       &http.Client{},
 	}
 	if err := c.refreshAccessToken(); err != nil {
 		return nil, err

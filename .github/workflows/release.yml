@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          BIN_NAME="rbv${{ matrix.ext }}"
+          BIN_NAME="rbv_${VERSION}_${GOOS}_${GOARCH}${{ matrix.ext }}"
           OUT_DIR="dist/${VERSION}"
           mkdir -p "${OUT_DIR}"
 
