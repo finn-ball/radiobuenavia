@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          BUILT_BY: github-actions
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BIN_NAME="rbv${{ matrix.ext }}"
+          OUT_DIR="dist/${VERSION}"
+          mkdir -p "${OUT_DIR}"
+
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE} -X main.builtBy=${BUILT_BY}" -o "${OUT_DIR}/${BIN_NAME}" ./cmd/rbv
+
+          ARCHIVE_BASE="rbv_${VERSION}_${GOOS}_${GOARCH}"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            (
+              cd "${OUT_DIR}"
+              zip -q "${ARCHIVE_BASE}.zip" "${BIN_NAME}"
+              rm -f "${BIN_NAME}"
+            )
+          else
+            tar -C "${OUT_DIR}" -czf "${OUT_DIR}/${ARCHIVE_BASE}.tar.gz" "${BIN_NAME}"
+            rm -f "${OUT_DIR}/${BIN_NAME}"
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ github.ref_name }}/*
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum rbv_* > checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/rbv_*
+            dist/checksums.txt

@@ -17,3 +17,9 @@ repos:
         language: system
         pass_filenames: false
         entry: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run --timeout=5m
+      - id: actionlint
+        name: actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false
+        entry: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.8 -color

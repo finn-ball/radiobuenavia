@@ -40,6 +40,9 @@ func main() {
 		case "doctor":
 			runDoctor(args[1:])
 			return
+		case "version", "--version", "-version":
+			runVersion()
+			return
 		}
 	}
 
