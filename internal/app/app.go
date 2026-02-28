@@ -154,10 +154,10 @@ func (a *App) startDownloadWorker(dbx *dropbox.Client, preproc []dropbox.FileMet
 			exportPath := filepath.Join(tmpDir, "ex-"+cleanExportName)
 
 			log.Printf("Downloading %s to %s", file.Name, importPath)
-			if err := retry(3, 2*time.Second, func() error {
+			if err := retry(fmt.Sprintf("download %q", file.Name), 3, 2*time.Second, func() error {
 				return dbx.DownloadFile(importPath, file.PathLower)
 			}); err != nil {
-				results <- downloadResult{err: err}
+				results <- downloadResult{err: fmt.Errorf("download %q failed: %w", file.Name, err)}
 				return
 			}
 			results <- downloadResult{
@@ -201,17 +201,17 @@ func (a *App) startUploadWorker(dbx *dropbox.Client) (chan<- uploadTask, <-chan 
 				continue
 			}
 			log.Printf("Uploading... %s", task.name)
-			if err := retry(3, 2*time.Second, func() error {
+			if err := retry(fmt.Sprintf("upload %q", task.name), 3, 2*time.Second, func() error {
 				return dbx.UploadFileSoundcloud(task.path, task.name, a.cfg.Paths.PostprocessSoundcloud)
 			}); err != nil {
-				firstErr = err
+				firstErr = fmt.Errorf("upload %q failed: %w", task.name, err)
 				continue
 			}
 			log.Printf("Copying to archive... %s", task.name)
-			if err := retry(3, 2*time.Second, func() error {
+			if err := retry(fmt.Sprintf("archive copy %q", task.name), 3, 2*time.Second, func() error {
 				return dbx.CopyToArchive(task.name, a.cfg.Paths.PostprocessSoundcloud, a.cfg.Paths.PostprocessArchive)
 			}); err != nil {
-				firstErr = err
+				firstErr = fmt.Errorf("archive copy %q failed: %w", task.name, err)
 				continue
 			}
 			log.Printf("Uploaded %q", task.name)
@@ -301,7 +301,7 @@ func promptConfirm(prompt string) bool {
 	return line == "" || strings.EqualFold(line, "y")
 }
 
-func retry(attempts int, delay time.Duration, fn func() error) error {
+func retry(operation string, attempts int, delay time.Duration, fn func() error) error {
 	var err error
 	for i := 0; i < attempts; i++ {
 		err = fn()
@@ -315,7 +315,7 @@ func retry(attempts int, delay time.Duration, fn func() error) error {
 			return err
 		}
 		wait := retryDelay(err, delay, i)
-		log.Printf("Retrying after error (%d/%d): %v (next attempt in %s)", i+1, attempts, err, wait.Round(time.Millisecond))
+		log.Printf("Retrying %s after error (%d/%d): %v (next attempt in %s)", operation, i+1, attempts, err, wait.Round(time.Millisecond))
 		time.Sleep(wait)
 	}
 	return err
