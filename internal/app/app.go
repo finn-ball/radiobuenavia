@@ -43,7 +43,9 @@ func (a *App) Run() error {
 	if err != nil {
 		return err
 	}
-	defer pipe.Close()
+	defer func() {
+		_ = pipe.Close()
+	}()
 
 	log.Print("Connecting to Dropbox...")
 	dbx, err := dropbox.NewClient(a.cfg.Auth.AppKey, a.cfg.Auth.AppSecret, a.cfg.Auth.RefreshToken)

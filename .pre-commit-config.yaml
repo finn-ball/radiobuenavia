@@ -1,0 +1,19 @@
+minimum_prek_version: "0.3.0"
+repos:
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        language: system
+        types: [go]
+        entry: go run mvdan.cc/gofumpt@v0.7.0 -w
+      - id: goimports
+        name: goimports
+        language: system
+        types: [go]
+        entry: go run golang.org/x/tools/cmd/goimports@v0.30.0 -w
+      - id: golangci-lint
+        name: golangci-lint
+        language: system
+        pass_filenames: false
+        entry: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run --timeout=5m

@@ -20,6 +20,21 @@ On Windows, scripting pipes must be available at `\\\\.\\pipe\\ToSrvPipe` and `\
 go mod tidy
 ```
 
+## Prek Hooks
+
+Install `prek` and enable repository hooks:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/download/v0.4.2/prek-installer.sh | sh
+prek install
+```
+
+Run all hooks manually:
+
+```bash
+prek run --all-files
+```
+
 ## Build
 
 ```bash
