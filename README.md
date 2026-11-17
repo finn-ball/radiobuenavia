@@ -25,7 +25,7 @@ go mod tidy
 Install `prek` and enable repository hooks:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/download/v0.3.4/prek-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/download/v0.5.11/prek-installer.sh | sh
 prek install
 ```
 
@@ -38,7 +38,7 @@ prek run --all-files
 Install a specific version:
 
 ```bash
-PREK_VERSION=v0.3.4
+PREK_VERSION=v0.5.11
 curl --proto '=https' --tlsv1.2 -LsSf "https://github.com/j178/prek/releases/download/${PREK_VERSION}/prek-installer.sh" | sh
 ```
 
