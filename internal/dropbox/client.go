@@ -2,11 +2,11 @@ package dropbox
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,6 +23,7 @@ const (
 )
 
 type Client struct {
+	ctx          context.Context
 	appKey       string
 	appSecret    string
 	refreshToken string
@@ -34,6 +35,21 @@ type FileMetadata struct {
 	Name           string
 	PathLower      string
 	ClientModified time.Time
+}
+
+// WithContext returns a stage-local client with cancellable requests and independent token state.
+// The original client must not be mutated while making this copy.
+func (c *Client) WithContext(ctx context.Context) *Client {
+	copy := *c
+	copy.ctx = ctx
+	return &copy
+}
+
+func (c *Client) requestContext() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 func NewClient(appKey, appSecret, refreshToken string) (*Client, error) {
@@ -54,7 +70,7 @@ func (c *Client) refreshAccessToken() error {
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", c.refreshToken)
 
-	req, err := http.NewRequest("POST", apiHost+"/oauth2/token", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(c.requestContext(), "POST", apiHost+"/oauth2/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}
@@ -88,14 +104,9 @@ func (c *Client) refreshAccessToken() error {
 
 func (c *Client) ListFiles(path string) ([]FileMetadata, error) {
 	type listFolderResponse struct {
-		Entries []struct {
-			Tag            string `json:".tag"`
-			Name           string `json:"name"`
-			PathLower      string `json:"path_lower"`
-			ClientModified string `json:"client_modified"`
-		} `json:"entries"`
-		Cursor  string `json:"cursor"`
-		HasMore bool   `json:"has_more"`
+		Entries []listFolderEntry `json:"entries"`
+		Cursor  string            `json:"cursor"`
+		HasMore bool              `json:"has_more"`
 	}
 
 	body := map[string]any{
@@ -136,13 +147,14 @@ func (c *Client) ListFiles(path string) ([]FileMetadata, error) {
 	return files, nil
 }
 
-func extractFiles(entries []struct {
+type listFolderEntry struct {
 	Tag            string `json:".tag"`
 	Name           string `json:"name"`
 	PathLower      string `json:"path_lower"`
 	ClientModified string `json:"client_modified"`
-},
-) []FileMetadata {
+}
+
+func extractFiles(entries []listFolderEntry) []FileMetadata {
 	files := []FileMetadata{}
 	for _, entry := range entries {
 		if entry.Tag != "file" {
@@ -189,11 +201,12 @@ func (c *Client) DownloadFile(localPath, dropboxPath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = out.Close()
-	}()
-	_, err = io.Copy(out, resp.Body)
-	return err
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func (c *Client) UploadFileSoundcloud(localPath, name, soundcloudPath string) error {
@@ -293,7 +306,7 @@ func (c *Client) UploadFile(localPath, remotePath string) error {
 	offset := int64(n)
 	for offset < fileSize {
 		remaining := fileSize - offset
-		chunkSize64 := minInt64(remaining, int64(chunkSize))
+		chunkSize64 := min(remaining, int64(chunkSize))
 		chunk := make([]byte, int(chunkSize64))
 		read, err := io.ReadFull(file, chunk)
 		if err != nil && err != io.ErrUnexpectedEOF {
@@ -405,7 +418,7 @@ func (c *Client) doAPIRequest(endpoint string, payload []byte) ([]byte, error) {
 }
 
 func (c *Client) doAPIRequestNoBody(endpoint string) ([]byte, error) {
-	req, err := http.NewRequest("POST", apiHost+endpoint, nil)
+	req, err := http.NewRequestWithContext(c.requestContext(), "POST", apiHost+endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +441,7 @@ func (c *Client) doContentRequest(endpoint string, arg []byte, body []byte) (*ht
 	if body == nil {
 		body = []byte{}
 	}
-	req, err := http.NewRequest("POST", contentHost+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(c.requestContext(), "POST", contentHost+endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -441,21 +454,11 @@ func (c *Client) doContentRequest(endpoint string, arg []byte, body []byte) (*ht
 }
 
 func (c *Client) doAPIRequestWithJSONBody(endpoint string, payload []byte) (*http.Response, error) {
-	req, err := http.NewRequest("POST", apiHost+endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(c.requestContext(), "POST", apiHost+endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	req.Header.Set("Content-Type", mime.TypeByExtension(".json"))
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	req.Header.Set("Content-Type", "application/json")
 	return c.client.Do(req)
-}
-
-func minInt64(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
 }

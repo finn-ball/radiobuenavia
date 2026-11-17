@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -9,28 +10,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	"radiobuenavia/internal/audacity"
 	"radiobuenavia/internal/audio"
 	"radiobuenavia/internal/config"
 	"radiobuenavia/internal/dropbox"
 )
 
 type App struct {
-	cfg config.Config
+	cfg  config.Config
+	jobs int
 }
 
 type downloadResult struct {
-	file       dropbox.FileMetadata
 	name       string
 	importPath string
 	exportPath string
-	err        error
 }
 
-func New(cfg config.Config) *App {
-	return &App{cfg: cfg}
+func New(cfg config.Config, jobs int) *App {
+	return &App{cfg: cfg, jobs: max(1, jobs)}
 }
 
 func (a *App) Run() error {
@@ -40,14 +40,10 @@ func (a *App) Run() error {
 		return err
 	}
 
-	log.Print("Connecting to Audacity...")
-	pipe, err := audacity.NewPipeClient()
-	if err != nil {
+	log.Print("Checking FFmpeg audio processing...")
+	if err := audio.CheckTools(); err != nil {
 		return err
 	}
-	defer func() {
-		_ = pipe.Close()
-	}()
 
 	log.Print("Connecting to Dropbox...")
 	dbx, err := dropbox.NewClient(a.cfg.Auth.AppKey, a.cfg.Auth.AppSecret, a.cfg.Auth.RefreshToken)
@@ -71,10 +67,10 @@ func (a *App) Run() error {
 		log.Print("Goodbye!")
 		return nil
 	}
-	if err := a.runPass(dbx, pipe, a.cfg.Paths.PreprocessLive, jingles, true, liveFiles); err != nil {
+	if err := a.runPass(dbx, jingles, true, liveFiles); err != nil {
 		return err
 	}
-	if err := a.runPass(dbx, pipe, a.cfg.Paths.PreprocessPrerecord, jingles, false, prerecordFiles); err != nil {
+	if err := a.runPass(dbx, jingles, false, prerecordFiles); err != nil {
 		return err
 	}
 	return nil
@@ -100,125 +96,158 @@ func (a *App) listPass(dbx *dropbox.Client, label, preprocessPath string) ([]dro
 	return preproc, nil
 }
 
-func (a *App) runPass(dbx *dropbox.Client, pipe *audacity.PipeClient, preprocessPath string, jingles []string, live bool, preproc []dropbox.FileMetadata) error {
+func (a *App) runPass(dbx *dropbox.Client, jingles []string, live bool, preproc []dropbox.FileMetadata) error {
 	if len(preproc) == 0 {
 		return nil
 	}
 
-	tmpDir := filepath.Join(os.TempDir(), "rbv")
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+	// Catch ambiguous remote destinations before concurrent work can overwrite one.
+	names := make(map[string]bool, len(preproc))
+	for _, file := range preproc {
+		name := strings.ToLower(withMp3Ext(dbx.RenameFile(file)))
+		if names[name] {
+			return fmt.Errorf("multiple programmes map to the same output name: %s", name)
+		}
+		names[name] = true
+	}
+	tmpDir, err := os.MkdirTemp("", "rbv-pass-*")
+	if err != nil {
 		return err
 	}
-
-	uploadCh, uploadDone := a.startUploadWorker(dbx)
-	results := a.startDownloadWorker(dbx, preproc, tmpDir)
-
-	for i := 0; i < len(preproc); i++ {
-		result, ok := <-results
-		if !ok {
-			return fmt.Errorf("download worker stopped unexpectedly")
-		}
-		if result.err != nil {
-			return result.err
-		}
-
-		fmt.Printf("\n\tProcessing:\n\t\t%s\n\n", result.name)
-
-		if err := processFile(pipe, result, live, jingles); err != nil {
-			return err
-		}
-
-		uploadCh <- uploadTask{
-			name: result.name,
-			path: result.exportPath,
-		}
-	}
-
-	close(uploadCh)
-	if err := <-uploadDone; err != nil {
-		return err
-	}
-	return nil
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+	log.Printf("Processing with %d audio workers", min(a.jobs, len(preproc)))
+	return runPipeline(context.Background(), a.jobs, preproc,
+		func(ctx context.Context, file dropbox.FileMetadata) (downloadResult, error) {
+			downloads := dbx.WithContext(ctx)
+			dir, err := os.MkdirTemp(tmpDir, "programme-*")
+			if err != nil {
+				return downloadResult{}, err
+			}
+			result := downloadResult{
+				name:       withMp3Ext(dbx.RenameFile(file)),
+				importPath: filepath.Join(dir, "input.mp3"),
+				exportPath: filepath.Join(dir, "output.mp3"),
+			}
+			log.Printf("Downloading %s", file.Name)
+			err = retry(ctx, fmt.Sprintf("download %q", file.Name), 3, 2*time.Second, func() error {
+				return downloads.DownloadFile(result.importPath, file.PathLower)
+			})
+			if err != nil {
+				return result, fmt.Errorf("download %q failed: %w", file.Name, err)
+			}
+			return result, nil
+		},
+		func(ctx context.Context, result downloadResult) error {
+			log.Printf("Processing %s", result.name)
+			if err := audio.Process(ctx, result.importPath, result.exportPath, live, audio.GetArtist(result.name), jingles); err != nil {
+				return fmt.Errorf("process %q failed: %w", result.name, err)
+			}
+			return nil
+		},
+		func(ctx context.Context, result downloadResult) error {
+			uploads := dbx.WithContext(ctx)
+			log.Printf("Uploading %s", result.name)
+			if err := retry(ctx, fmt.Sprintf("upload %q", result.name), 3, 2*time.Second, func() error {
+				return uploads.UploadFileSoundcloud(result.exportPath, result.name, a.cfg.Paths.PostprocessSoundcloud)
+			}); err != nil {
+				return fmt.Errorf("upload %q failed: %w", result.name, err)
+			}
+			log.Printf("Copying to archive %s", result.name)
+			if err := retry(ctx, fmt.Sprintf("archive copy %q", result.name), 3, 2*time.Second, func() error {
+				return uploads.CopyToArchive(result.name, a.cfg.Paths.PostprocessSoundcloud, a.cfg.Paths.PostprocessArchive)
+			}); err != nil {
+				return fmt.Errorf("archive copy %q failed: %w", result.name, err)
+			}
+			if err := os.RemoveAll(filepath.Dir(result.importPath)); err != nil {
+				return err
+			}
+			log.Printf("Uploaded %q", result.name)
+			return nil
+		})
 }
 
-func (a *App) startDownloadWorker(dbx *dropbox.Client, preproc []dropbox.FileMetadata, tmpDir string) <-chan downloadResult {
-	results := make(chan downloadResult, 1)
+// runPipeline bounds in-flight files and joins every stage before returning.
+// Downloads and uploads each remain serial, overlapping with the processing pool.
+func runPipeline(ctx context.Context, jobs int, files []dropbox.FileMetadata,
+	download func(context.Context, dropbox.FileMetadata) (downloadResult, error),
+	process func(context.Context, downloadResult) error,
+	upload func(context.Context, downloadResult) error,
+) error {
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	inputs := make(chan downloadResult)
+	outputs := make(chan downloadResult)
+	var firstErr error
+	var failed sync.Once
+	fail := func(err error) {
+		failed.Do(func() { firstErr = err; cancel() })
+	}
+	var stages, processors sync.WaitGroup
+	stages.Add(1)
 	go func() {
-		defer close(results)
-		for _, file := range preproc {
-			name := dbx.RenameFile(file)
-			exportName := withMp3Ext(name)
-			cleanName := strings.ReplaceAll(name, " ", "-")
-			cleanExportName := strings.ReplaceAll(exportName, " ", "-")
-			importPath := filepath.Join(tmpDir, "im-"+cleanName)
-			exportPath := filepath.Join(tmpDir, "ex-"+cleanExportName)
-
-			log.Printf("Downloading %s to %s", file.Name, importPath)
-			if err := retry(fmt.Sprintf("download %q", file.Name), 3, 2*time.Second, func() error {
-				return dbx.DownloadFile(importPath, file.PathLower)
-			}); err != nil {
-				results <- downloadResult{err: fmt.Errorf("download %q failed: %w", file.Name, err)}
+		defer stages.Done()
+		defer close(inputs)
+		for _, file := range files {
+			if ctx.Err() != nil {
 				return
 			}
-			results <- downloadResult{
-				file:       file,
-				name:       exportName,
-				importPath: importPath,
-				exportPath: exportPath,
+			result, err := download(ctx, file)
+			if err != nil {
+				fail(err)
+				return
+			}
+			select {
+			case inputs <- result:
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
-	return results
-}
-
-func processFile(pipe *audacity.PipeClient, result downloadResult, live bool, jingles []string) error {
-	log.Print("Processing...")
-	if err := pipe.Process(result.importPath, result.exportPath, live); err != nil {
-		return err
+	for i := 0; i < min(max(1, jobs), len(files)); i++ {
+		processors.Add(1)
+		go func() {
+			defer processors.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case result, ok := <-inputs:
+					if !ok || ctx.Err() != nil {
+						return
+					}
+					if err := process(ctx, result); err != nil {
+						fail(err)
+						return
+					}
+					select {
+					case outputs <- result:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}()
 	}
-	log.Print("Done!")
-
-	artist := audio.GetArtist(result.name)
-	log.Print("Setting artist name and potentially changing bitrate.")
-	if err := audio.ProcessMetadataAndBitrate(result.exportPath, artist, jingles); err != nil {
-		return err
-	}
-	return nil
-}
-
-type uploadTask struct {
-	name string
-	path string
-}
-
-func (a *App) startUploadWorker(dbx *dropbox.Client) (chan<- uploadTask, <-chan error) {
-	tasks := make(chan uploadTask, 1)
-	done := make(chan error, 1)
-	go func() {
-		var firstErr error
-		for task := range tasks {
-			if firstErr != nil {
-				continue
-			}
-			log.Printf("Uploading... %s", task.name)
-			if err := retry(fmt.Sprintf("upload %q", task.name), 3, 2*time.Second, func() error {
-				return dbx.UploadFileSoundcloud(task.path, task.name, a.cfg.Paths.PostprocessSoundcloud)
-			}); err != nil {
-				firstErr = fmt.Errorf("upload %q failed: %w", task.name, err)
-				continue
-			}
-			log.Printf("Copying to archive... %s", task.name)
-			if err := retry(fmt.Sprintf("archive copy %q", task.name), 3, 2*time.Second, func() error {
-				return dbx.CopyToArchive(task.name, a.cfg.Paths.PostprocessSoundcloud, a.cfg.Paths.PostprocessArchive)
-			}); err != nil {
-				firstErr = fmt.Errorf("archive copy %q failed: %w", task.name, err)
-				continue
-			}
-			log.Printf("Uploaded %q", task.name)
+	stages.Add(1)
+	go func() { defer stages.Done(); processors.Wait(); close(outputs) }()
+	for result := range outputs {
+		if ctx.Err() != nil {
+			break
 		}
-		done <- firstErr
-	}()
-	return tasks, done
+		if err := upload(ctx, result); err != nil {
+			fail(err)
+			break
+		}
+	}
+	cancel()
+	stages.Wait()
+	if firstErr != nil {
+		return firstErr
+	}
+	return parent.Err()
 }
 
 func validateJingles(jingles []string) error {
@@ -301,9 +330,12 @@ func promptConfirm(prompt string) bool {
 	return line == "" || strings.EqualFold(line, "y")
 }
 
-func retry(operation string, attempts int, delay time.Duration, fn func() error) error {
+func retry(ctx context.Context, operation string, attempts int, delay time.Duration, fn func() error) error {
 	var err error
 	for i := 0; i < attempts; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		err = fn()
 		if err == nil {
 			return nil
@@ -316,7 +348,11 @@ func retry(operation string, attempts int, delay time.Duration, fn func() error)
 		}
 		wait := retryDelay(err, delay, i)
 		log.Printf("Retrying %s after error (%d/%d): %v (next attempt in %s)", operation, i+1, attempts, err, wait.Round(time.Millisecond))
-		time.Sleep(wait)
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	return err
 }

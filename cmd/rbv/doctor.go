@@ -2,13 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"radiobuenavia/internal/audio"
 	"radiobuenavia/internal/config"
 	"radiobuenavia/internal/dropbox"
 )
@@ -38,20 +37,14 @@ func runDoctor(args []string) {
 
 	checkPath(dbx, "preprocess_live", cfg.Paths.PreprocessLive)
 	checkPath(dbx, "preprocess_prerecord", cfg.Paths.PreprocessPrerecord)
-	ok := true
 	checkPath(dbx, "postprocess_soundcloud", cfg.Paths.PostprocessSoundcloud)
 	checkPath(dbx, "postprocess_archive", cfg.Paths.PostprocessArchive)
 
 	checkJingles(cfg.Paths.Jingles, cfg.Paths.JinglesDir)
-	if !checkTool("ffmpeg") {
-		ok = false
+	if err := audio.CheckTools(); err != nil {
+		log.Fatalf("doctor audio tools check failed: %v", err)
 	}
-	if !checkTool("ffprobe") {
-		ok = false
-	}
-	if !ok {
-		log.Fatalf("doctor checks failed")
-	}
+	log.Print("audio tools: FFmpeg filters, MP3 encoder and ffprobe ok")
 }
 
 func checkPath(dbx *dropbox.Client, label, path string) {
@@ -96,23 +89,4 @@ func checkJingles(jingles []string, jinglesDir string) {
 		}
 		log.Printf("jingles_dir ok: %s (mp3 files=%d)", jinglesDir, count)
 	}
-
-	fmt.Print("")
-}
-
-func checkTool(name string) bool {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		log.Printf("%s: not found in PATH", name)
-		return false
-	}
-	cmd := exec.Command(path, "-version")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("%s: found (%s) but failed to run: %v", name, path, err)
-		return false
-	}
-	versionLine := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
-	log.Printf("%s: ok (%s) %s", name, path, versionLine)
-	return true
 }

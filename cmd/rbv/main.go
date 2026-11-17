@@ -48,10 +48,11 @@ func main() {
 
 	fs := flag.NewFlagSet("rbv", flag.ExitOnError)
 	configPath := fs.String("config", "./config.toml", "path to config file")
+	jobs := fs.Int("jobs", defaultJobs(), "number of concurrent audio processing workers (minimum 1)")
 	pause := fs.Bool("pause", defaultPause(), "pause before exit")
 	_ = fs.Parse(args)
 
-	if err := runMain(*configPath); err != nil {
+	if err := runMain(*configPath, *jobs); err != nil {
 		log.Print(err)
 		exitCode = 1
 	}
@@ -61,23 +62,28 @@ func main() {
 	}
 }
 
-func runMain(configPath string) error {
+func runMain(configPath string, jobs int) error {
 	log.Print("This software is distributed under the GNU GENERAL PUBLIC LICENSE agreement.")
 	log.Print("This software comes with absolutely no warranty or liability.")
 	log.Print("More information can be found in the LICENSE file.")
 	log.Print(art)
 
+	if jobs < 1 {
+		return fmt.Errorf("-jobs must be at least 1")
+	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("config error: %w", err)
 	}
 
-	app := app.New(cfg)
+	app := app.New(cfg, jobs)
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run failed: %w", err)
 	}
 	return nil
 }
+
+func defaultJobs() int { return max(1, min(runtime.NumCPU()-1, 4)) }
 
 func defaultPause() bool {
 	return runtime.GOOS == "windows"
