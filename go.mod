@@ -1,8 +1,8 @@
 module radiobuenavia
 
-go 1.26
+go 1.27.4
 
 require (
-	github.com/BurntSushi/toml v1.3.2
-	golang.org/x/sys v0.17.0
+	github.com/BurntSushi/toml v1.6.0
+	golang.org/x/sys v0.50.0
 )
